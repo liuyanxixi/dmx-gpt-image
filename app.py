@@ -112,14 +112,12 @@ def generate(req: GenerateRequest):
                     or ""
                 )
 
-        if image_result_url:
-            return {"success": True, "image_url": image_result_url, "error": "", "mode": mode}
-
         return {
-        "success": False,
-        "image_url": "",
-        "error": "没有拿到图片URL",
-        "raw": result
+            "success": bool(image_result_url),
+            "image_url": image_result_url,
+            "error": "" if image_result_url else "没有拿到图片URL",
+            "mode": mode,
+            "raw": result
         }
 
     except Exception as e:
