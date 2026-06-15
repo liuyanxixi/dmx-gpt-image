@@ -37,14 +37,15 @@ def health():
     return {"ok": True}
 
 
-# 核心工具：base64 上传OSS，强制HTTPS兼容Railway海外容器
+# 核心工具：base64 上传OSS，兼容低版本oss2，强制HTTPS
 def upload_b64_to_oss(b64_str: str) -> str:
     if not all([OSS_ACCESS_KEY_ID, OSS_ACCESS_KEY_SECRET, OSS_ENDPOINT, OSS_BUCKET_NAME]):
         raise Exception("服务未完整配置阿里云OSS环境变量，无法转换base64图片链接")
 
     auth = oss2.Auth(OSS_ACCESS_KEY_ID, OSS_ACCESS_KEY_SECRET)
-    # secure=True 强制HTTPS 443端口，解决Railway域名/80端口报错
-    bucket = oss2.Bucket(auth, OSS_ENDPOINT, OSS_BUCKET_NAME, secure=True)
+    # 兼容低版本oss2，拼接https://强制走443端口HTTPS，移除secure参数
+    full_endpoint = f"https://{OSS_ENDPOINT}"
+    bucket = oss2.Bucket(auth, full_endpoint, OSS_BUCKET_NAME)
 
     img_bytes = base64.b64decode(b64_str)
     file_key = f"draw/{uuid.uuid4()}.png"
