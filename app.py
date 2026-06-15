@@ -1,31 +1,69 @@
 import os
 import json
 import mimetypes
+import base64
+import uuid
 from urllib.parse import urlparse
 
 import requests
+import oss2
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
 app = FastAPI(title="DMX GPT Image for Coze", version="1.0.0")
 
+# DMX 绘图接口配置（Railway 环境变量读取）
 DMX_API_KEY = os.getenv("DMX_API_KEY", "")
 DMX_BASE_URL = os.getenv("DMX_BASE_URL", "https://www.dmxapi.cn")
 DMX_MODEL = os.getenv("DMX_MODEL", "gpt-image-2-ssvip")
 
+# 阿里云 OSS 配置（Railway 环境变量读取）
+OSS_ACCESS_KEY_ID = os.getenv("OSS_ACCESS_KEY_ID", "")
+OSS_ACCESS_KEY_SECRET = os.getenv("OSS_ACCESS_KEY_SECRET", "")
+OSS_ENDPOINT = os.getenv("OSS_ENDPOINT", "")
+OSS_BUCKET_NAME = os.getenv("OSS_BUCKET_NAME", "")
 
+
+# 请求参数模型
 class GenerateRequest(BaseModel):
     prompt: str = Field(..., description="图片生成/修改提示词")
     image_url: str | None = Field(default="", description="原图链接，不传则文生图，传则图生图/图片编辑")
     size: str | None = Field(default="1024x1024", description="图片尺寸，如 1024x1024、1536x1024、1024x1536、2048x1152")
 
+
+# 健康检测接口
 @app.get("/health")
 def health():
     return {"ok": True}
 
 
+# 核心工具：base64 图片上传阿里云OSS，返回公开 https 直链
+def upload_b64_to_oss(b64_str: str) -> str:
+    # 校验OSS配置完整性
+    if not all([OSS_ACCESS_KEY_ID, OSS_ACCESS_KEY_SECRET, OSS_ENDPOINT, OSS_BUCKET_NAME]):
+        raise Exception("服务未完整配置阿里云OSS环境变量，无法转换base64图片链接")
+
+    # 初始化OSS客户端
+    auth = oss2.Auth(OSS_ACCESS_KEY_ID, OSS_ACCESS_KEY_SECRET)
+    bucket = oss2.Bucket(auth, OSS_ENDPOINT, OSS_BUCKET_NAME)
+
+    # base64解码为二进制图片
+    img_bytes = base64.b64decode(b64_str)
+    # 生成唯一文件名，统一存 draw/ 文件夹（匹配OSS生命周期自动删图规则）
+    file_key = f"draw/{uuid.uuid4()}.png"
+
+    # 上传文件，指定图片MIME类型
+    bucket.put_object(file_key, img_bytes, headers={"Content-Type": "image/png"})
+
+    # 拼接公开访问URL
+    full_url = f"https://{OSS_BUCKET_NAME}.{OSS_ENDPOINT}/{file_key}"
+    return full_url
+
+
+# 绘图主接口
 @app.post("/generate")
 def generate(req: GenerateRequest):
+    # 校验DMX密钥
     if not DMX_API_KEY:
         return {"success": False, "image_url": "", "error": "服务器未配置 DMX_API_KEY"}
 
@@ -37,8 +75,9 @@ def generate(req: GenerateRequest):
         return {"success": False, "image_url": "", "error": "prompt不能为空"}
 
     try:
+        # 分支1：文生图（无原图）
         if not image_url:
-            url = f"{DMX_BASE_URL}/v1/images/generations"
+            api_url = f"{DMX_BASE_URL}/v1/images/generations"
             headers = {
                 "Authorization": f"Bearer {DMX_API_KEY}",
                 "Content-Type": "application/json",
@@ -49,42 +88,45 @@ def generate(req: GenerateRequest):
                 "n": 1,
                 "size": size
             }
-            resp = requests.post(url, headers=headers, json=payload, timeout=600)
-            mode = "text_to_image"
-        else:
-            img_resp = requests.get(image_url, timeout=60)
-            img_resp.raise_for_status()
+            resp = requests.post(api_url, headers=headers, json=payload, timeout=600)
+            run_mode = "text_to_image"
 
-            filename = urlparse(image_url).path.split("/")[-1] or "image.png"
+        # 分支2：图生图/图片编辑（传入原图链接）
+        else:
+            # 下载用户传入的原图
+            img_download_resp = requests.get(image_url, timeout=60)
+            img_download_resp.raise_for_status()
+
+            filename = urlparse(image_url).path.split("/")[-1] or "input.png"
             mime_type = mimetypes.guess_type(filename)[0] or "image/png"
 
-            url = f"{DMX_BASE_URL}/v1/images/edits"
+            api_url = f"{DMX_BASE_URL}/v1/images/edits"
             headers = {"Authorization": f"Bearer {DMX_API_KEY}"}
-            data = {
+            form_data = {
                 "model": DMX_MODEL,
                 "prompt": prompt,
                 "n": "1",
                 "size": size
             }
-            files = {"image": (filename, img_resp.content, mime_type)}
-            resp = requests.post(url, headers=headers, data=data, files=files, timeout=600)
-            mode = "image_to_image"
-            
+            upload_files = {"image": (filename, img_download_resp.content, mime_type)}
+            resp = requests.post(api_url, headers=headers, data=form_data, files=upload_files, timeout=600)
+            run_mode = "image_to_image"
+
+        # 解析DMX返回JSON
         try:
             result = resp.json()
-            
-            print("====== DMX RAW ======")
+            print("====== DMX 原始返回数据 ======")
             print(result)
-            print("=====================")
-            
+            print("============================")
         except Exception:
             return {
                 "success": False,
                 "image_url": "",
-                "error": "DMX返回不是JSON：" + resp.text[:1000],
+                "error": f"DMX接口返回非JSON格式：{resp.text[:1000]}",
                 "status_code": resp.status_code,
-            }        
+            }
 
+        # 捕获DMX接口报错
         if resp.status_code >= 400:
             return {
                 "success": False,
@@ -95,15 +137,22 @@ def generate(req: GenerateRequest):
 
         image_result_url = ""
         if isinstance(result, dict):
-            if result.get("data"):
+            # 标准返回格式 data[0]
+            if result.get("data") and len(result["data"]) > 0:
                 item = result["data"][0]
-                image_result_url = (
-                    item.get("url")
-                    or item.get("image_url")
-                    or item.get("output_url")
-                    or ("data:image/png;base64," + item.get("b64_json") if item.get("b64_json") else "")
-                    or ""
-                )
+                base64_data = item.get("b64_json")
+
+                # 优先使用DMX原生图片直链
+                if item.get("url"):
+                    image_result_url = item["url"]
+                elif item.get("image_url"):
+                    image_result_url = item["image_url"]
+                elif item.get("output_url"):
+                    image_result_url = item["output_url"]
+                # 只有接口返回base64时，上传OSS转换为http链接
+                elif base64_data:
+                    image_result_url = upload_b64_to_oss(base64_data)
+            # 兼容非标准单层返回结构
             else:
                 image_result_url = (
                     result.get("url")
@@ -112,13 +161,15 @@ def generate(req: GenerateRequest):
                     or ""
                 )
 
+        # 组装最终返回给Coze插件的结果
         return {
             "success": bool(image_result_url),
             "image_url": image_result_url,
-            "error": "" if image_result_url else "没有拿到图片URL",
-            "mode": mode,
+            "error": "" if image_result_url else "未获取到有效图片链接",
+            "mode": run_mode,
             "raw": result
         }
 
     except Exception as e:
+        # 全局异常捕获
         return {"success": False, "image_url": "", "error": str(e)}
