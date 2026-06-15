@@ -69,6 +69,7 @@ def generate(req: GenerateRequest):
             files = {"image": (filename, img_resp.content, mime_type)}
             resp = requests.post(url, headers=headers, data=data, files=files, timeout=600)
             mode = "image_to_image"
+            
         try:
             result = resp.json()
             
@@ -76,16 +77,13 @@ def generate(req: GenerateRequest):
             print(result)
             print("=====================")
             
-            except Exception:
+        except Exception:
             return {
                 "success": False,
                 "image_url": "",
                 "error": "DMX返回不是JSON：" + resp.text[:1000],
                 "status_code": resp.status_code,
-            }
-
-
-        
+            }        
 
         if resp.status_code >= 400:
             return {
@@ -103,7 +101,7 @@ def generate(req: GenerateRequest):
                     item.get("url")
                     or item.get("image_url")
                     or item.get("output_url")
-                    or item.get("b64_json")
+                    or ("data:image/png;base64," + item.get("b64_json") if item.get("b64_json") else "")
                     or ""
                 )
             else:
