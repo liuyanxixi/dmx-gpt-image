@@ -1,0 +1,98 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "GPT图片生成",
+    "description": "一个接口同时支持文生图和图生图：传 image_url 即图生图/图片编辑，不传 image_url 即文生图。",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://你的Railway域名.up.railway.app"
+    }
+  ],
+  "paths": {
+    "/generate": {
+      "post": {
+        "summary": "GPT图片生成/图片编辑",
+        "operationId": "generate_image",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["prompt"],
+                "properties": {
+                  "prompt": {
+                    "type": "string",
+                    "description": "图片生成/修改提示词"
+                  },
+                  "image_url": {
+                    "type": "string",
+                    "description": "要编辑的原图链接；不填则文生图"
+                  },
+                  "size": {
+                    "type": "string",
+                    "description": "图片尺寸，默认 1024x1024，可填 1024x1024、1536x1024、1024x1536、2048x1152",
+                    "default": "1024x1024"
+                  },
+                  "quality": {
+                    "type": "string",
+                    "description": "图片质量，默认 high",
+                    "default": "high"
+                  },
+                  "output_format": {
+                    "type": "string",
+                    "description": "输出格式，默认 png",
+                    "default": "png"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "图片生成结果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {"type": "boolean", "description": "是否成功"},
+                    "image_url": {"type": "string", "description": "生成后的图片链接"},
+                    "error": {"type": "string", "description": "失败原因"},
+                    "mode": {"type": "string", "description": "text_to_image 或 image_to_image"}
+                  },
+                  "required": ["success", "image_url", "error"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "summary": "健康检查",
+        "operationId": "health_check",
+        "responses": {
+          "200": {
+            "description": "服务状态",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {"type": "boolean"}
+                  },
+                  "required": ["ok"]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
