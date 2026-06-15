@@ -69,16 +69,23 @@ def generate(req: GenerateRequest):
             files = {"image": (filename, img_resp.content, mime_type)}
             resp = requests.post(url, headers=headers, data=data, files=files, timeout=600)
             mode = "image_to_image"
-
         try:
             result = resp.json()
-        except Exception:
+            
+            print("====== DMX RAW ======")
+            print(result)
+            print("=====================")
+            
+            except Exception:
             return {
                 "success": False,
                 "image_url": "",
                 "error": "DMX返回不是JSON：" + resp.text[:1000],
                 "status_code": resp.status_code,
             }
+
+
+        
 
         if resp.status_code >= 400:
             return {
