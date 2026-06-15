@@ -54,8 +54,7 @@ def generate(req: GenerateRequest):
                 "n": 1,
                 "size": size,
                 "quality": quality,
-                "output_format": output_format,
-                "response_format": "url",
+                "output_format": output_format
             }
             resp = requests.post(url, headers=headers, json=payload, timeout=180)
             mode = "text_to_image"
@@ -74,8 +73,7 @@ def generate(req: GenerateRequest):
                 "n": "1",
                 "size": size,
                 "quality": quality,
-                "output_format": output_format,
-                "response_format": "url",
+                "output_format": output_format
             }
             files = {"image": (filename, img_resp.content, mime_type)}
             resp = requests.post(url, headers=headers, data=data, files=files, timeout=180)
