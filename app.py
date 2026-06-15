@@ -18,9 +18,6 @@ class GenerateRequest(BaseModel):
     prompt: str = Field(..., description="图片生成/修改提示词")
     image_url: str | None = Field(default="", description="原图链接，不传则文生图，传则图生图/图片编辑")
     size: str | None = Field(default="1024x1024", description="图片尺寸，如 1024x1024、1536x1024、1024x1536、2048x1152")
-    quality: str | None = Field(default="high", description="图片质量")
-    output_format: str | None = Field(default="png", description="输出格式：png/jpeg/webp")
-
 
 @app.get("/health")
 def health():
@@ -35,8 +32,6 @@ def generate(req: GenerateRequest):
     prompt = (req.prompt or "").strip()
     image_url = (req.image_url or "").strip()
     size = req.size or "1024x1024"
-    quality = req.quality or "high"
-    output_format = req.output_format or "png"
 
     if not prompt:
         return {"success": False, "image_url": "", "error": "prompt不能为空"}
@@ -52,11 +47,9 @@ def generate(req: GenerateRequest):
                 "model": DMX_MODEL,
                 "prompt": prompt,
                 "n": 1,
-                "size": size,
-                "quality": quality,
-                "output_format": output_format
+                "size": size
             }
-            resp = requests.post(url, headers=headers, json=payload, timeout=180)
+            resp = requests.post(url, headers=headers, json=payload, timeout=600)
             mode = "text_to_image"
         else:
             img_resp = requests.get(image_url, timeout=60)
@@ -71,12 +64,10 @@ def generate(req: GenerateRequest):
                 "model": DMX_MODEL,
                 "prompt": prompt,
                 "n": "1",
-                "size": size,
-                "quality": quality,
-                "output_format": output_format
+                "size": size
             }
             files = {"image": (filename, img_resp.content, mime_type)}
-            resp = requests.post(url, headers=headers, data=data, files=files, timeout=180)
+            resp = requests.post(url, headers=headers, data=data, files=files, timeout=600)
             mode = "image_to_image"
 
         try:
@@ -98,17 +89,32 @@ def generate(req: GenerateRequest):
             }
 
         image_result_url = ""
-        if isinstance(result, dict) and result.get("data"):
-            item = result["data"][0]
-            image_result_url = item.get("url") or item.get("b64_json") or ""
+        if isinstance(result, dict):
+            if result.get("data"):
+                item = result["data"][0]
+                image_result_url = (
+                    item.get("url")
+                    or item.get("image_url")
+                    or item.get("output_url")
+                    or item.get("b64_json")
+                    or ""
+                )
+            else:
+                image_result_url = (
+                    result.get("url")
+                    or result.get("image_url")
+                    or result.get("output_url")
+                    or ""
+                )
 
         if image_result_url:
             return {"success": True, "image_url": image_result_url, "error": "", "mode": mode}
 
         return {
-            "success": False,
-            "image_url": "",
-            "error": "没有拿到图片URL：" + json.dumps(result, ensure_ascii=False),
+        "success": False,
+        "image_url": "",
+        "error": "没有拿到图片URL",
+        "raw": result
         }
 
     except Exception as e:
