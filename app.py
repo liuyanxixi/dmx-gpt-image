@@ -4,6 +4,7 @@ import mimetypes
 import base64
 import uuid
 from urllib.parse import urlparse
+from typing import Optional
 
 import requests
 import oss2
@@ -27,8 +28,8 @@ OSS_BUCKET_NAME = os.getenv("OSS_BUCKET_NAME", "")
 # 请求参数模型
 class GenerateRequest(BaseModel):
     prompt: str = Field(..., description="图片生成/修改提示词")
-    image_url: str | None = Field(default="", description="原图链接，不传则文生图，传则图生图/图片编辑")
-    size: str | None = Field(default="1024x1024", description="图片尺寸，如 1024x1024、1536x1024、1024x1536、2048x1152")
+    image_url: Optional[str] = Field(default="", description="原图链接，不传则文生图，传则图生图/图片编辑")
+    size: Optional[str] = Field(default="1024x1024", description="图片尺寸，如 1024x1024、1536x1024、1024x1536、2048x1152")
 
 
 # 健康检测接口

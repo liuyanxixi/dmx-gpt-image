@@ -1,0 +1,39 @@
+edition: 3.0.0
+name: dmx-gpt-image
+access: aliyun
+
+vars:
+  region: cn-beijing
+  functionName: dmx-gpt-image
+
+resources:
+  api:
+    component: fc3
+    props:
+      region: ${vars.region}
+      functionName: ${vars.functionName}
+      description: DMX GPT Image API for Coze
+      runtime: custom.debian11
+      code: .
+      handler: not-used
+      memorySize: 1024
+      timeout: 600
+      environmentVariables:
+        PYTHONUNBUFFERED: "1"
+        DMX_API_KEY: ${env('DMX_API_KEY', '')}
+        DMX_BASE_URL: ${env('DMX_BASE_URL', 'https://www.dmxapi.cn')}
+        DMX_MODEL: ${env('DMX_MODEL', 'gpt-image-2-ssvip')}
+        OSS_ACCESS_KEY_ID: ${env('OSS_ACCESS_KEY_ID', '')}
+        OSS_ACCESS_KEY_SECRET: ${env('OSS_ACCESS_KEY_SECRET', '')}
+        OSS_BUCKET_NAME: ${env('OSS_BUCKET_NAME', '')}
+        OSS_ENDPOINT: ${env('OSS_ENDPOINT', '')}
+      triggers:
+        - triggerName: http
+          triggerType: http
+          qualifier: LATEST
+          triggerConfig:
+            authType: anonymous
+            disableURLInternet: false
+            methods:
+              - GET
+              - POST
